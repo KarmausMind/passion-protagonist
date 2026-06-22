@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ClientReady — Replication Engine v1.0</title>
+<style>
+:root{
+  --bg:#0D0D0C; --panel:#141413; --panel2:#0F0F0E;
+  --ink:#FFFFFF; --soft:#C5C5C2; --muted:#757572;
+  --line:rgba(255,255,255,.058); --line2:rgba(255,255,255,.11);
+  --accent:rgba(255,255,255,.36); --grid:rgba(255,255,255,.0055);
+  --shadow:rgba(0,0,0,.80); --gold:#D4B24B;
+  --ui-bg:#0C0C0C; --ui-panel:#161616; --ui-border:rgba(255,255,255,.09); --ui-ink:#EDEDEB;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",Roboto,Arial,sans-serif;
+}
+[data-theme="chalk"]{
+  --bg:#F4F3F0; --panel:#FFFFFF; --panel2:#FBFAF7;
+  --ink:#0E0E0C; --soft:#3A3A36; --muted:#8A8A82;
+  --line:rgba(0,0,0,.07); --line2:rgba(0,0,0,.12);
+  --accent:rgba(0,0,0,.34); --grid:rgba(0,0,0,.014);
+  --shadow:rgba(20,20,40,.14); --gold:#A6802A;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ui-bg);color:var(--ui-ink);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;
+  display:flex;min-height:100vh}
+
+/* ===== LEFT CONTROL PANEL ===== */
+.panel-ctrl{width:340px;flex-shrink:0;background:var(--ui-panel);
+  border-right:1px solid var(--ui-border);padding:24px;overflow-y:auto;height:100vh}
+.panel-ctrl h1{font-size:14px;font-weight:700;letter-spacing:.5px;color:#fff;margin-bottom:2px}
+.panel-ctrl .sub{font-size:11px;color:rgba(255,255,255,.4);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:22px}
+.ctrl-label{font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:rgba(255,255,255,.5);margin:18px 0 8px}
+textarea{width:100%;height:160px;background:#0A0A0A;border:1px solid var(--ui-border);
+  border-radius:8px;color:#ddd;font-family:Georgia,serif;font-size:13px;line-height:1.5;padding:12px;resize:vertical}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+select,.btn-ctrl{background:#0A0A0A;border:1px solid var(--ui-border);border-radius:7px;
+  color:#ddd;font-family:var(--sans);font-size:12px;padding:8px 10px;cursor:pointer}
+.btn-ctrl{background:#1d1d1d;font-weight:600;letter-spacing:.3px}
+.btn-ctrl:hover{background:#262626;color:#fff}
+.btn-primary{width:100%;background:var(--gold);color:#0A0A0A;border:none;border-radius:8px;
+  padding:12px;font-weight:700;font-size:13px;letter-spacing:.4px;cursor:pointer;margin-top:6px}
+.btn-primary:hover{filter:brightness(1.08)}
+.page-roles{margin-top:6px}
+.role-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+.role-row .pn{width:46px;color:rgba(255,255,255,.4);font-size:10px;font-weight:700;letter-spacing:1px}
+.role-row select{flex:1;padding:6px 8px;font-size:11px}
+.validators{margin-top:14px;border-top:1px solid var(--ui-border);padding-top:14px}
+.val{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;color:rgba(255,255,255,.6)}
+.val .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.val .pass{background:#4ade80} .val .warn{background:#fbbf24} .val .fail{background:#f87171}
+
+/* ===== RIGHT STAGE ===== */
+.stage-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:38px 20px;background:var(--bg);position:relative;transition:background .3s ease;height:100vh;overflow:hidden}
+.stage-wrap:before{content:"";position:fixed;inset:0;left:340px;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:40px 40px;pointer-events:none}
+.stage{position:relative;z-index:2;width:100%;max-width:880px;flex:1;display:flex;align-items:center;justify-content:center}
+
+/* ===== PRESENT MODE — the jewel alone, no controls ===== */
+body.present .panel-ctrl{display:none}
+body.present .stage-wrap:before{left:0}
+body.present .stage{max-width:1100px}
+body.present .card{max-height:760px}
+body.present .workshop-only{display:none}
+body.present #exportStatus{display:none !important}
+/* present-mode toggle button (top-right, subtle) */
+.present-toggle{position:fixed;top:20px;right:22px;z-index:60;
+  background:var(--panel);border:1px solid var(--line);border-radius:999px;
+  color:var(--muted);font-family:var(--sans);font-size:11px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;padding:9px 18px;cursor:pointer;
+  box-shadow:0 8px 24px var(--shadow);transition:all .2s}
+.present-toggle:hover{color:var(--ink);border-color:var(--line2)}
+body.present .present-toggle{background:rgba(255,255,255,.04)}
+.card{width:100%;aspect-ratio:1.45/1;max-height:580px;
+  background:linear-gradient(180deg,var(--panel),var(--panel2));
+  border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 34px 80px var(--shadow),inset 0 1px 0 rgba(255,255,255,.025);
+  padding:54px 64px;display:flex;flex-direction:column;justify-content:space-between;
+  transition:opacity .18s ease,background .28s ease,border-color .28s ease}
+.header,.footer{display:flex;align-items:center;justify-content:space-between;color:var(--muted);
+  font-size:10px;line-height:1;font-weight:650;letter-spacing:2.6px;text-transform:uppercase}
+.header{border-bottom:1px solid var(--line);padding-bottom:15px}
+.header .eye{color:var(--gold)}
+.footer{border-top:1px solid var(--line);padding-top:15px}
+.content{flex:1;display:flex;flex-direction:column;justify-content:center;padding:28px 0;max-width:760px;overflow:hidden;min-height:0}
+.fitwrap{transform-origin:left center;width:100%}
+.line{display:block}
+.para{margin-bottom:18px}.para:last-child{margin-bottom:0}
+/* TYPE SYSTEM — serif (Garamond) carries the soul, sans (Inter Tight) carries force/structure.
+   Length-aware hero sizing: short line strikes big, long line stays composed. */
+/* TYPE — single family (Inter). Length-aware hero tiers fix oversized heroes:
+   short line strikes big, long line steps down gently. Small text = original good sizes. */
+.h-force-xl,.h-soul-xl{font-size:clamp(34px,4.8vw,60px);line-height:1.04;letter-spacing:-.044em;font-weight:800;color:var(--ink)}
+.h-force-l,.h-soul-l {font-size:clamp(30px,4vw,50px);line-height:1.08;letter-spacing:-.038em;font-weight:790;color:var(--ink)}
+.h-force-m,.h-soul-m {font-size:clamp(26px,3.3vw,40px);line-height:1.14;letter-spacing:-.03em;font-weight:760;color:var(--ink)}
+.h-force-s,.h-soul-s {font-size:clamp(23px,2.8vw,33px);line-height:1.22;letter-spacing:-.024em;font-weight:730;color:var(--ink)}
+.h-soul-xl em,.h-soul-l em,.h-soul-m em,.h-soul-s em{font-style:italic;color:var(--gold)}
+/* role classes — original sizes you liked */
+.opening{font-size:clamp(34px,4.8vw,60px);line-height:1.04;letter-spacing:-.044em;font-weight:800;color:var(--ink)}
+.hero{font-size:clamp(28px,3.7vw,46px);line-height:1.1;letter-spacing:-.036em;font-weight:780;color:var(--ink)}
+.body{font-size:clamp(17px,2vw,23px);line-height:1.52;letter-spacing:-.012em;color:var(--soft);font-weight:420}
+.punch{font-size:clamp(24px,3vw,37px);line-height:1.18;letter-spacing:-.03em;color:var(--ink);font-weight:730}
+.quote{font-size:clamp(25px,3.15vw,40px);line-height:1.12;letter-spacing:-.032em;color:var(--ink);font-weight:780}
+.setup{font-size:clamp(16px,1.65vw,20px);line-height:1.28;color:var(--muted);letter-spacing:-.01em;margin-bottom:5px}
+.question{font-size:clamp(17px,1.85vw,22px);line-height:1.38;letter-spacing:-.01em;color:var(--soft);font-weight:420;margin-bottom:9px}
+.question:before{content:"";display:inline-block;width:18px;height:1px;background:var(--accent);opacity:.62;margin-right:10px;vertical-align:middle}
+.rule{width:42px;height:1px;background:var(--ink);opacity:.22;margin:22px 0}
+.quietRule{width:42px;height:1px;background:var(--ink);opacity:.15;margin:20px 0}
+.gold-line{color:var(--gold)}
+.signature{margin-top:22px;border-top:1px solid var(--line);padding-top:14px;width:330px}
+.signature .name{font-family:Georgia,"Times New Roman",serif;font-size:15px;font-style:italic;color:var(--ink)}
+.signature .cred{margin-top:5px;font-size:9px;letter-spacing:2.2px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.patternHero{font-size:clamp(30px,4vw,50px);line-height:1.05;letter-spacing:-.04em;font-weight:800;color:var(--ink);max-width:740px}
+.patternPlaces{font-size:clamp(20px,2.4vw,29px);line-height:1.3;letter-spacing:-.022em;font-weight:660;color:var(--soft);max-width:740px}
+.dock{position:relative;z-index:3;display:flex;align-items:center;gap:18px;background:var(--panel);
+  border:1px solid var(--line);border-radius:999px;padding:8px 20px;box-shadow:0 12px 36px var(--shadow)}
+.group{display:flex;align-items:center;gap:7px}
+.sep{width:1px;height:18px;background:var(--line)}
+.dock button{background:transparent;border:1px solid transparent;color:var(--muted);border-radius:999px;
+  padding:6px 13px;cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.4px}
+.dock button:hover:not(:disabled),.dock button.active{color:var(--ink);background:var(--line);border-color:var(--line)}
+.dock button:disabled{opacity:.18;cursor:not-allowed}
+.nav{font-size:16px;padding:4px 12px}
+.dot-nav{width:5px;height:5px;border-radius:50%;background:var(--line2);padding:0;border:0;transition:all .25s}
+.dot-nav.active{width:18px;border-radius:2px;background:var(--gold)}
+.dlabel{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);font-weight:750}
+</style>
+</head>
+<body>
+
+<button class="present-toggle" id="presentToggle" onclick="togglePresent()">Present</button>
+
+<!-- LEFT: CONTROL PANEL -->
+<aside class="panel-ctrl">
+  <h1>ClientReady</h1>
+  <div class="sub">Replication Engine v1.0</div>
+
+  <div class="ctrl-label">1 · Client Text (verbatim)</div>
+  <textarea id="srcText">One of the biggest debates in therapy today: will AI replace us? Wrong problem. Richard Hamming studied why equal talent produces unequal impact. Not IQ. Not luck. The problem they chose. Most people work on the problem next to the important one. AI is the problem next to the important one. Here is the important one. A person walks into therapy today. Panic. Grief. Loneliness. They get the same results as someone in 1986. Same anxiety. Same depression. Same recovery rates. The field's own studies say so. Forty years of new schools and certifications. Any other service would have rebuilt itself. Therapy added more acronyms. So I went looking for the bottleneck in my own work. I reviewed hundreds of my sessions. One pattern kept showing up. The symptom is the doorway. The subject is the work. A woman comes in for panic. The panic is not about today. It is her war with uncertainty. A man comes in for resentment. The fight ended years ago. Everywhere except inside him. The event is over. The relationship with the event is still charging rent. Therapy shrinks the panic. Calms the anger. But that is not the lever. The lever is how the person treats their own thoughts and feelings. Why has nothing moved in forty years? Nobody teaches this. Not in school. Not in training. People think their thoughts are facts. And their feelings are threats. You cannot get better at a skill nobody told you exists. So I rebuilt my sessions around one rule: the work must be visible. One topic per session. Rarely the main complaint. We look at the person in other rooms of their life. Criticism. Failure. Silence. We pick one skill. The client explains it back to me. If you cannot say it back, you do not have it yet. Then twenty minutes of practice. Daily. The client picks the time and place. I stopped calling it homework. It is the therapy continuing without me. Next session opens with how it went. No sugarcoating. No daily practice, no life change. The client sees what they practiced. What changed. They don't need a study to feel it. And I follow the same rule. I ask every client for honest feedback. I review every session with AI. It holds hundreds of sessions in view at once. No human memory can do that. AI is not my replacement. It is my lab. I cannot ask clients to face their blind spots if I refuse to face mine. A therapist who does not read is at a disadvantage. Same for one who never met philosophy. Same for one who refuses to learn AI. Same list. Same choice. Success in this profession looks like an empty chair. A client who got better. Finished. Comes back when life gets hard. Sends people your way. That is the important problem. Tomorrow, ask one different question. Not "What happened?" Ask: "How are you living with what happened?" Then watch the room change.</textarea>
+
+  <div class="row" style="margin-top:12px">
+    <input id="eyebrowSrc" placeholder="Series label" value="The Important Problem"
+      style="flex:1;background:#0A0A0A;border:1px solid var(--ui-border);border-radius:7px;color:#ddd;font-size:11px;padding:8px">
+  </div>
+  <div style="margin-top:8px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.4);font-weight:700">
+    Pages: <span id="derivedPages" style="color:var(--gold)">—</span>
+    <span style="color:rgba(255,255,255,.28);text-transform:none;letter-spacing:0;font-weight:500"> · derived from text, never chosen</span>
+  </div>
+
+  <button class="btn-primary" onclick="compile()">Compile → Propose Roles</button>
+
+  <div class="ctrl-label">2 · Page Roles (you approve)</div>
+  <div class="page-roles" id="roleList"></div>
+
+  <div class="validators" id="validators"></div>
+</aside>
+
+<!-- RIGHT: STAGE -->
+<main class="stage-wrap" id="stageWrap">
+  <div class="stage">
+    <section class="card" id="card">
+      <header class="header"><span class="eye" id="eye"></span><span id="idx"></span></header>
+      <article class="content" id="content"></article>
+      <footer class="footer"><span id="series"></span><span id="roman"></span></footer>
+    </section>
+  </div>
+  <nav class="dock">
+    <div class="group">
+      <button class="nav" id="prev" onclick="go(-1)">&larr;</button>
+      <div class="group" id="dots"></div>
+      <button class="nav" id="next" onclick="go(1)">&rarr;</button>
+    </div>
+    <div class="sep present-keep"></div>
+    <div class="group present-keep">
+      <span class="dlabel">Canvas</span>
+      <button id="obsidian" class="active" onclick="theme('obsidian')">Obsidian</button>
+      <button id="chalk" onclick="theme('chalk')">Chalk</button>
+    </div>
+    <div class="sep workshop-only"></div>
+    <div class="group workshop-only">
+      <span class="dlabel">Export</span>
+      <button id="dlPng" onclick="exportPNGs()" style="color:var(--gold);font-weight:700">Download PNGs</button>
+      <button id="dlPdf" onclick="exportPDF()">Download PDF</button>
+      <button id="dlPublish" onclick="publishGitHub()">Publish (Share Link)</button>
+    </div>
+  </nav>
+  <div id="exportStatus" style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:50;
+    background:#161616;border:1px solid var(--line);border-radius:8px;padding:10px 18px;font-size:12px;
+    color:var(--gold);display:none;box-shadow:0 8px 24px rgba(0,0,0,.6)"></div>
+</main>
+
+<!-- PUBLISH MODAL — generates a self-contained shareable artifact + GitHub instructions -->
+<div id="publishModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.78);
+  align-items:center;justify-content:center;font-family:var(--sans)">
+  <div style="background:#161616;border:1px solid var(--ui-border);border-radius:14px;max-width:520px;width:92%;
+    padding:30px 32px;color:#EDEDEB;box-shadow:0 30px 80px rgba(0,0,0,.7);max-height:86vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <h2 style="font-size:16px;font-weight:700;letter-spacing:.3px">Publish as a live, swipeable artifact</h2>
+      <button onclick="closePublish()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer">×</button>
+    </div>
+    <p style="font-size:13px;line-height:1.6;color:#bbb;margin-bottom:16px">
+      This downloads a <b>standalone viewer</b> of your carousel — present-mode only, no editing controls,
+      just the swipeable artifact. Host it free on GitHub Pages and share the link; anyone who opens it
+      swipes through your live carousel.
+    </p>
+    <button onclick="downloadShareable()" style="width:100%;background:var(--gold);color:#0A0A0A;border:none;
+      border-radius:8px;padding:13px;font-weight:700;font-size:13px;letter-spacing:.4px;cursor:pointer;margin-bottom:18px">
+      ↓ Download Shareable Artifact (index.html)
+    </button>
+    <div style="font-size:12px;line-height:1.7;color:#aaa">
+      <b style="color:#ddd">Then publish it free in 4 steps:</b><br>
+      1. Go to <span style="color:var(--gold)">github.com</span> → New repository → name it (e.g. <i>my-carousel</i>) → Public → Create.<br>
+      2. Click <i>uploading an existing file</i> → drag in the downloaded <i>index.html</i> → Commit.<br>
+      3. Repo <i>Settings</i> → <i>Pages</i> → Source: <i>main branch</i> → Save.<br>
+      4. Wait ~1 min. Your live link appears: <span style="color:var(--gold)">username.github.io/my-carousel</span><br>
+      <span style="color:#777">Share that link anywhere. It opens your live swipeable artifact.</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- export libs: html2canvas (PNG capture) + jsPDF (PDF assembly) + JSZip (bundle all PNGs) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+
+
+<script>
+/* ============================================================
+   CLIENTREADY REPLICATION ENGINE v1.0
+   Two parts, exactly as architected:
+   (A) DETERMINISTIC RENDER — locked template per role
+   (B) HUMAN ROLE CHECKPOINT — engine proposes, user approves
+   Law: client words are never changed. Cuts snap to author punctuation.
+   ============================================================ */
+
+const ROLES = ["open","recognition","method","definition","law","practice","resistance","pattern","metaphor","close"];
+const ROLE_LABELS = {open:"Opening",recognition:"Recognition",method:"Method",definition:"Definition",
+  law:"Law",practice:"Practice",resistance:"Resistance",pattern:"Pattern",metaphor:"Metaphor",close:"Closing"};
+const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV"];
+
+let PAGES = [];      // {text, role, label}
+let active = 0;
+
+function esc(v){return String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');}
+
+/* ---- (A1) DETERMINISTIC PAGINATION — EXACT-WHITESPACE SPINE ----
+   A unit carries its EXACT original characters: {text, trailing}.
+   `text` = the visible sentence. `trailing` = the exact whitespace that
+   followed it in the source (space, newline, double-newline, tab — preserved).
+   Reassembly = concatenation of text+trailing, byte-for-byte. Nothing is
+   normalized or trimmed. Verbatim is protected by construction. */
+function sentenceUnits(text){
+  // capture any LEADING whitespace as a prefix unit so nothing is lost at the edge
+  const leadMatch = text.match(/^(\s+)/);
+  const lead = leadMatch ? leadMatch[1] : '';
+  const body = lead ? text.slice(lead.length) : text;
+  const re = /(\S[\s\S]*?(?:[.!?:]["\u201d\u2019)]?|\n))(\s*)/g;
+  const units=[]; let m, lastEnd=0;
+  while((m=re.exec(body))!==null){
+    units.push({text:m[1], trailing:m[2]});
+    lastEnd = re.lastIndex;
+  }
+  if(lastEnd < body.length){
+    const tail = body.slice(lastEnd);
+    const tm = tail.match(/^([\s\S]*?)(\s*)$/);
+    if(tm && tm[1].trim()) units.push({text:tm[1], trailing:tm[2]});
+  }
+  if(!units.length) units.push({text:body, trailing:''});
+  // fold leading whitespace onto the first unit's text-prefix (preserved verbatim)
+  if(lead) units[0] = {text: lead + units[0].text, trailing: units[0].trailing};
+  return units;
+}
+
+/* PAGINATION LAW: per-page CHARACTER CEILING is the constant.
+   Page count is the OUTPUT. Cuts land on author punctuation. Verbatim preserved. */
+const PAGE_CHAR_CEILING = 130;   // premium per-page ceiling (provisional — to be sourced)
+const CEILING_FLEX = 0.22;       // allow a strong beat to finish
+
+function paginate(text){
+  const units = sentenceUnits(text);
+  const ceiling = PAGE_CHAR_CEILING;
+  const pages=[]; let cur=[], len=0;
+  for(const u of units){
+    if(cur.length && (len + u.text.length) > ceiling*(1+CEILING_FLEX)){
+      pages.push(cur); cur=[]; len=0;
+    }
+    cur.push(u); len += u.text.length + 1;
+  }
+  if(cur.length) pages.push(cur);
+  // absorb a tiny tail page into the previous (no orphan fragment)
+  if(pages.length>1){
+    const lastLen = pages[pages.length-1].reduce((a,u)=>a+u.text.length+1,0);
+    if(lastLen < ceiling*0.4){
+      pages[pages.length-2] = pages[pages.length-2].concat(pages[pages.length-1]);
+      pages.pop();
+    }
+  }
+  // each page is an array of units; expose a display string AND keep units
+  return pages.map(unitArr => ({
+    units: unitArr,
+    // display text: visible sentences joined by single space (for templates only)
+    text: unitArr.map(u=>u.text).join(' '),
+    // verbatim slice: exact original characters (text+trailing) concatenated
+    verbatim: unitArr.map(u=>u.text + u.trailing).join('')
+  }));
+}
+
+/* ---- (B) ROLE PROPOSAL: engine guesses by position; USER confirms via dropdowns ---- */
+function proposeRoles(count){
+  // position-based default proposal. First=open, last=close, others spread across the role vocabulary.
+  const roles=[];
+  for(let i=0;i<count;i++){
+    if(i===0) roles.push("open");
+    else if(i===count-1) roles.push("close");
+    else{
+      const mid=["recognition","method","definition","law","practice","resistance","pattern","metaphor"];
+      roles.push(mid[(i-1)%mid.length]);
+    }
+  }
+  return roles;
+}
+
+/* ---- (A2) LOCKED RENDER TEMPLATES — one per role, deterministic ---- */
+function lines(t){return t.split('\n').map(x=>esc(x.trim())).filter(Boolean);}
+function asSentences(t){ // split into display units; RESPECT author line breaks
+  // First split on the author's own newlines (a line break is a hard unit boundary —
+  // this is what keeps a title or a fragment from gluing to the next sentence).
+  const byLine = t.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const out=[];
+  for(const line of byLine){
+    // within a line, split on sentence punctuation
+    const parts = line.match(/.+?(?:[.!?:]["\u201d\u2019)]?(?=\s|$)|$)/g) || [line];
+    parts.forEach(p=>{ const s=p.trim(); if(s) out.push(s); });
+  }
+  return out.length ? out : [t.trim()];
+}
+// A line is a TITLE if it has no terminal sentence punctuation (a heading, not a sentence).
+function isTitleLine(s){ return s.length>0 && !/[.!?:]["\u201d\u2019)]?$/.test(s); }
+
+/* HERO SELECTION — the Tone Preservation checkpoint.
+   Default: open page -> first line (the entrance). Every other role -> last line
+   (the page lands on its strongest beat). The human can override per page via
+   the hero picker; page.heroIdx, when set, wins over the default. */
+function defaultHeroIdx(role, n){
+  if(n<=1) return 0;
+  return (role==="open") ? 0 : n-1;
+}
+function heroIndexFor(page, n){
+  if(page.heroIdx!=null && page.heroIdx>=0 && page.heroIdx<n) return page.heroIdx;
+  return defaultHeroIdx(page.role, n);
+}
+
+/* UNIFIED RENDER — every page elevates exactly ONE hero line; the rest recede.
+   No page can render as a flat uniform block. The role only changes the FLAVOR
+   of the hero (opening/quote/punch/patternHero) and how support lines sit. */
+function renderRole(page){
+  let s = asSentences(page.text);
+  const role = page.role;
+
+  // TITLE HANDLING: if the page opens with a title line (no terminal punctuation),
+  // lift it out as a proper title above the content — never glue it to the hero.
+  let titleHtml = '';
+  if(s.length>1 && isTitleLine(s[0])){
+    const tl = s[0].length;
+    const tcls = tl<=28?"h-force-xl":tl<=55?"h-force-l":"h-force-m";
+    titleHtml = `<div class="${tcls} para" style="margin-bottom:18px">${esc(s[0])}</div><div class="rule"></div>`;
+    s = s.slice(1);
+  }
+
+  const n = s.length;
+  const hIdx = heroIndexFor(page, n);
+  const hero = s[hIdx];
+  const before = s.slice(0, hIdx);
+  const after  = s.slice(hIdx+1);
+
+  // FORCE roles get the bold sans hero; SOUL roles get the editorial serif hero.
+  const SOUL = (role==="recognition"||role==="metaphor"||role==="close"||role==="definition"||role==="pattern");
+  const fam = SOUL ? "soul" : "force";
+  // LENGTH-AWARE TIER — the fix for oversized heroes. Short line strikes big;
+  // long line steps down so it never becomes a shouting wall.
+  const L = hero.length;
+  let tier;
+  if(L<=42)        tier="xl";
+  else if(L<=78)   tier="l";
+  else if(L<=120)  tier="m";
+  else             tier="s";
+  let heroCls = `h-${fam}-${tier}`;
+  // if a title is already present, never let the hero match the title's size — step it down one
+  if(titleHtml){
+    const order=["xl","l","m","s"];
+    const idx=Math.min(order.indexOf(tier)+1, order.length-1);
+    heroCls = `h-${fam}-${order[idx]}`;
+  }
+
+  // recognition with a "setup: quote" colon stays special (its native strength)
+  if(role==="recognition" && n===1 && !titleHtml){
+    const m = hero.match(/^(.*?:)\s*(.+)$/);
+    if(m) return `<div class="para"><div class="setup">${esc(m[1])}</div><div class="quote">${esc(m[2])}</div></div>`;
+  }
+
+  const supportBefore = before.length
+    ? `<div class="body para" style="opacity:.92">${esc(before.join(' '))}</div>` : '';
+  const supportAfter  = after.length
+    ? `<div class="body para" style="opacity:.92;margin-top:14px">${esc(after.join(' '))}</div>` : '';
+  const divTop = before.length ? `<div class="quietRule"></div>` : '';
+
+  // signature only on the closing page
+  const sig = (role==="close")
+    ? `<div class="signature"><div class="name">Manuel Acosta</div><div class="cred">LMHC · Miami, Florida</div></div>`
+    : '';
+  const heroLine = `<div class="${heroCls} para${role==='close'?' gold-line':''}">${esc(hero)}</div>`;
+
+  return `${titleHtml}${supportBefore}${divTop}${heroLine}${supportAfter}${sig}`;
+}
+
+/* ---- VALIDATORS ---- */
+/* ---- EXPORT GATE CONTROLLER (v1.2) ----
+   Two gates. MACHINE = objective pass/fail (looped, blocks export).
+   HUMAN = judgment (role/hero approval). Preview always allowed; EXPORT gated. */
+
+
+function computeGate(){
+  const rawSrc = document.getElementById('srcText').value;
+  const reconstructed = PAGES.map(p=>p.verbatim).join('');
+  // MACHINE GATE — objective only
+  const verbatimPass   = PAGES.length>0 && reconstructed === rawSrc;   // byte-exact
+  // DENSITY GATE — a page is only "too dense" if it CRAMMED multiple units past
+  // the hard ceiling (the paginator should have broken it). A single long sentence
+  // that exceeds the ceiling is valid verbatim with nothing to split — the
+  // length-aware render shrinks it; we never block on it.
+  const allowed = PAGE_CHAR_CEILING * (1 + CEILING_FLEX);   // ~159
+  const hardMax = Math.round(allowed * 1.7);                // ~270 — true cram only
+  const denseCount = PAGES.filter(p=>{
+    const unitCount = p.units ? p.units.length : 1;
+    return p.text.length > hardMax && unitCount > 1;        // multi-unit overflow only
+  }).length;
+  const densityPass    = PAGES.length>0 && denseCount===0;
+  const openClosePass  = PAGES.some(p=>p.role==="open") && PAGES.some(p=>p.role==="close");
+  const libsReady      = (typeof html2canvas!=='undefined') && (typeof window.jspdf!=='undefined');
+  const machineGatePass = verbatimPass && densityPass && openClosePass;
+  // HUMAN GATE REMOVED — you approve by deciding to export. No hidden click.
+  const exportUnlocked = machineGatePass && libsReady;
+  // blockers (exact, never vague)
+  const blockers=[];
+  if(PAGES.length===0) blockers.push("Compile a text first.");
+  if(PAGES.length>0 && !verbatimPass) blockers.push("Verbatim reconstruction failed.");
+  if(PAGES.length>0 && !densityPass) blockers.push(`${denseCount} page(s) exceed density ceiling.`);
+  if(PAGES.length>0 && !openClosePass) blockers.push("Set an Opening and a Closing page.");
+  if(!libsReady) blockers.push("Export libraries are still loading.");
+  return {verbatimPass,densityPass,openClosePass,libsReady,machineGatePass,exportUnlocked,denseCount,blockers};
+}
+
+function refreshExportState(){
+  const g = computeGate();
+  const png=document.getElementById('dlPng'), pdf=document.getElementById('dlPdf');
+  [png,pdf].forEach(b=>{ if(!b)return;
+    b.disabled=!g.exportUnlocked;
+    b.style.opacity=g.exportUnlocked?'1':'.3';
+    b.style.cursor=g.exportUnlocked?'pointer':'not-allowed';
+  });
+  // persistent export-status line
+  const es=document.getElementById('exportStatus');
+  if(es){
+    if(g.exportUnlocked){
+      es.style.display='block'; es.style.color='#4ade80';
+      es.textContent='Export ready';
+    } else {
+      es.style.display='block'; es.style.color='var(--gold)';
+      es.textContent='Export locked: '+g.blockers[0];
+    }
+  }
+  return g;
+}
+
+function runValidators(){
+  const v = document.getElementById('validators');
+  const g = computeGate();
+  function row(state,txt){const c=state==="pass"?"pass":state==="warn"?"warn":"fail";
+    return `<div class="val"><span class="dot ${c}"></span>${txt}</div>`;}
+  v.innerHTML =
+    `<div class="ctrl-label" style="margin-top:0">3 · Checks</div>`+
+    row(g.verbatimPass?"pass":"fail", g.verbatimPass?"Verbatim — byte-exact preserved":"Verbatim FAIL — text altered")+
+    row(g.densityPass?"pass":"fail", g.densityPass?"Density — all pages within ceiling":`Density — ${g.denseCount} page(s) too dense`)+
+    row(g.openClosePass?"pass":"fail", g.openClosePass?"Structure — open & close anchored":"Structure — set Opening + Closing")+
+    row(g.libsReady?"pass":"warn", g.libsReady?"Export ready":"Export libraries loading…");
+  refreshExportState();
+}
+
+/* ---- COMPILE ---- */
+function compile(){
+  const text = document.getElementById('srcText').value;
+  const chunks = paginate(text);                 // N derived from ceiling, not chosen
+  const roles = proposeRoles(chunks.length);
+  PAGES = chunks.map((c,i)=>({
+    text:c.text,            // display string (for templates)
+    verbatim:c.verbatim,    // EXACT original characters for this page
+    units:c.units,          // whitespace-carrying units
+    role:roles[i], label:ROLE_LABELS[roles[i]]
+  }));
+  document.getElementById('derivedPages').textContent = chunks.length;  // show the output
+
+  buildRoleList();
+  active=0; render(false); runValidators();
+}
+
+function buildRoleList(){
+  const list = document.getElementById('roleList');
+  list.innerHTML = PAGES.map((p,i)=>{
+    const opts = ROLES.map(r=>`<option value="${r}" ${r===p.role?'selected':''}>${ROLE_LABELS[r]}</option>`).join('');
+    // hero picker: one option per sentence on this page; default shown
+    const sents = asSentences(p.text);
+    const hIdx = heroIndexFor(p, sents.length);
+    const heroOpts = sents.map((sent,si)=>{
+      const short = sent.length>34 ? sent.slice(0,32)+'…' : sent;
+      return `<option value="${si}" ${si===hIdx?'selected':''}>${esc(short)}</option>`;
+    }).join('');
+    const heroPicker = sents.length>1
+      ? `<div style="margin:2px 0 8px 46px"><span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);font-weight:700">Hero</span>
+         <select onchange="setHero(${i},this.value)" style="width:100%;margin-top:3px;padding:5px 7px;font-size:10px">${heroOpts}</select></div>`
+      : '';
+    return `<div class="role-row"><span class="pn">P${String(i+1).padStart(2,'0')}</span>
+      <select onchange="setRole(${i},this.value)">${opts}</select></div>${heroPicker}`;
+  }).join('');
+}
+function setRole(i,r){ PAGES[i].role=r; PAGES[i].label=ROLE_LABELS[r]; PAGES[i].heroIdx=null;
+  buildRoleList(); if(i===active) render(false); runValidators(); }
+function setHero(i,idx){ PAGES[i].heroIdx=parseInt(idx,10);
+  if(i===active) render(false); runValidators(); }
+
+/* ---- RENDER ---- */
+function render(t){
+  if(!PAGES.length) return;
+  const p = PAGES[active], card=document.getElementById('card');
+  const draw=()=>{
+    document.getElementById('eye').textContent = document.getElementById('eyebrowSrc').value || p.label;
+    document.getElementById('series').textContent = p.label;
+    document.getElementById('idx').textContent = String(active+1).padStart(2,'0')+' / '+String(PAGES.length).padStart(2,'0');
+    document.getElementById('roman').textContent = ROMAN[active]||(active+1);
+    document.getElementById('content').innerHTML = renderRole(p);
+    if(t) card.style.opacity=1;
+  };
+  if(t){ card.style.opacity=0; setTimeout(draw,180);} else draw();
+  document.getElementById('prev').disabled = active===0;
+  document.getElementById('next').disabled = active===PAGES.length-1;
+  const dots=document.getElementById('dots'); dots.innerHTML='';
+  if(PAGES.length<=14){
+    // small deck: show dots
+    PAGES.forEach((_,i)=>{const b=document.createElement('button');
+      b.className='dot-nav'+(i===active?' active':''); b.onclick=()=>{active=i;render(true);}; dots.appendChild(b);});
+  } else {
+    // large deck: compact counter (dots would overflow and break the dock)
+    const span=document.createElement('span');
+    span.style.cssText='font-size:12px;font-weight:700;letter-spacing:1px;color:var(--ink);min-width:74px;text-align:center';
+    span.textContent=`${active+1} / ${PAGES.length}`;
+    dots.appendChild(span);
+  }
+}
+function go(d){const n=active+d; if(n>=0&&n<PAGES.length){active=n;render(true);}}
+function theme(t){document.documentElement.removeAttribute('data-theme');
+  if(t==='chalk'){document.documentElement.setAttribute('data-theme','chalk');
+    chalk.classList.add('active');obsidian.classList.remove('active');}
+  else{obsidian.classList.add('active');chalk.classList.remove('active');}}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')go(1);if(e.key==='ArrowLeft')go(-1);});
+
+/* ---- EXPORT ----
+   Renders each page into a fixed 1080x1080 offscreen card (true square,
+   independent of screen size), captures with html2canvas, downloads.
+   PNGs = one file per page (carousel). PDF = all pages, one document. */
+function status(msg, show=true){
+  const el=document.getElementById('exportStatus');
+  el.textContent=msg; el.style.display=show?'block':'none';
+}
+function buildExportCard(page, idx, total){
+  // standalone 1080x1080 card using the live theme variables
+  const isChalk = document.documentElement.getAttribute('data-theme')==='chalk';
+  const cs = getComputedStyle(document.documentElement);
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `position:fixed;left:-9999px;top:0;width:1080px;height:1080px;`+
+    `background:${cs.getPropertyValue('--bg')};display:flex;align-items:center;justify-content:center;`+
+    `font-family:${cs.getPropertyValue('--sans')};`;
+  if(isChalk) wrap.setAttribute('data-theme','chalk');
+  // scale the card geometry up to 1080 (live card is ~944 in a 1080 frame)
+  const eye = document.getElementById('eyebrowSrc').value || page.label;
+  wrap.innerHTML = `<div style="width:944px;height:944px;background:linear-gradient(180deg,${cs.getPropertyValue('--panel')},${cs.getPropertyValue('--panel2')});
+    border:1px solid ${cs.getPropertyValue('--line')};border-radius:14px;
+    box-shadow:0 40px 90px ${cs.getPropertyValue('--shadow')},inset 0 1px 0 rgba(255,255,255,.025);
+    padding:84px 92px;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid ${cs.getPropertyValue('--line')};padding-bottom:22px;font-size:15px;font-weight:650;letter-spacing:3.6px;text-transform:uppercase">
+      <span style="color:${cs.getPropertyValue('--gold')}">${eye}</span>
+      <span style="color:${cs.getPropertyValue('--muted')}">${String(idx+1).padStart(2,'0')} / ${String(total).padStart(2,'0')}</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:44px 0" id="exContent"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid ${cs.getPropertyValue('--line')};padding-top:22px;font-size:12px;font-weight:650;letter-spacing:2.6px;text-transform:uppercase;color:${cs.getPropertyValue('--muted')}">
+      <span>Manuel Acosta · LMHC</span><span>${page.label}</span></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  // reuse the live renderRole for identical layout, scaled up
+  wrap.querySelector('#exContent').innerHTML = renderRole(page);
+  // bump font sizes ~1.6x for the larger canvas
+  wrap.querySelectorAll('#exContent [class*="h-force-"],#exContent [class*="h-soul-"],#exContent .opening,#exContent .hero,#exContent .quote,#exContent .punch,#exContent .patternHero,#exContent .patternPlaces,#exContent .body,#exContent .setup,#exContent .question').forEach(el=>{
+    const fs=parseFloat(getComputedStyle(el).fontSize); el.style.fontSize=(fs*1.55)+'px';
+  });
+  return wrap;
+}
+async function captureAll(){
+  const total=PAGES.length, canvases=[];
+  for(let i=0;i<total;i++){
+    status(`Rendering page ${i+1} of ${total}…`);
+    const wrap=buildExportCard(PAGES[i], i, total);
+    await new Promise(r=>setTimeout(r,60));
+    const canvas=await html2canvas(wrap,{width:1080,height:1080,scale:1,backgroundColor:null,logging:false});
+    canvases.push(canvas);
+    document.body.removeChild(wrap);
+  }
+  return canvases;
+}
+async function exportPNGs(){
+  const g=computeGate();
+  if(!g.exportUnlocked){status('Export locked: '+g.blockers[0]);setTimeout(()=>refreshExportState(),2200);return;}
+  try{
+    const canvases=await captureAll();
+    status('Packaging '+canvases.length+' pages into a zip…');
+    // Bundle ALL pages into ONE zip — browsers block firing many separate downloads,
+    // which was capping multi-page exports. One zip = every page, no cap.
+    if(typeof JSZip!=='undefined'){
+      const zip=new JSZip();
+      for(let i=0;i<canvases.length;i++){
+        const dataUrl=canvases[i].toDataURL('image/png');
+        const b64=dataUrl.split(',')[1];
+        zip.file(`clientready_page_${String(i+1).padStart(2,'0')}.png`, b64, {base64:true});
+      }
+      const blob=await zip.generateAsync({type:'blob'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='clientready_carousel.zip';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      status(`Done — ${canvases.length} PNGs in clientready_carousel.zip`); setTimeout(()=>refreshExportState(),2600);
+    } else {
+      // fallback if zip lib unavailable: download individually (may hit browser cap)
+      canvases.forEach((canvas,i)=>{const a=document.createElement('a');a.href=canvas.toDataURL('image/png');a.download=`clientready_page_${String(i+1).padStart(2,'0')}.png`;a.click();});
+      status(`Downloaded ${canvases.length} PNGs (zip unavailable)`); setTimeout(()=>refreshExportState(),2600);
+    }
+  }catch(e){status('Export error: '+e.message);setTimeout(()=>refreshExportState(),3000);}
+}
+async function exportPDF(){
+  const g=computeGate();
+  if(!g.exportUnlocked){status('Export locked: '+g.blockers[0]);setTimeout(()=>refreshExportState(),2200);return;}
+  try{
+    const canvases=await captureAll();
+    status('Assembling PDF…');
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({unit:'px',format:[1080,1080]});
+    canvases.forEach((canvas,i)=>{
+      if(i>0)pdf.addPage([1080,1080]);
+      pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,1080,1080);
+    });
+    pdf.save('clientready_artifact.pdf');
+    status('Done — PDF downloaded'); setTimeout(()=>refreshExportState(),2200);
+  }catch(e){status('Export error: '+e.message);setTimeout(()=>refreshExportState(),3000);}
+}
+
+/* PRESENT MODE — hide the workshop, show only the jewel */
+function togglePresent(){
+  const on = document.body.classList.toggle('present');
+  document.getElementById('presentToggle').textContent = on ? 'Edit' : 'Present';
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && document.body.classList.contains('present')) togglePresent(); });
+
+/* PUBLISH — generate a standalone, present-only viewer of the current carousel */
+function publishGitHub(){
+  const g=computeGate();
+  if(!g.exportUnlocked){ status('Fix export blockers before publishing: '+g.blockers[0]); setTimeout(()=>refreshExportState(),2500); return; }
+  document.getElementById('publishModal').style.display='flex';
+}
+function closePublish(){ document.getElementById('publishModal').style.display='none'; }
+
+function downloadShareable(){
+  // capture current theme + eyebrow + the compiled PAGES (verbatim preserved)
+  const isChalk = document.documentElement.getAttribute('data-theme')==='chalk';
+  const eyebrow = document.getElementById('eyebrowSrc').value || '';
+  const payload = { eyebrow, theme:(isChalk?'chalk':'obsidian'), pages: PAGES.map(p=>({text:p.text, role:p.role, label:p.label, heroIdx:(p.heroIdx==null?null:p.heroIdx)})) };
+
+  // pull the live CSS + the render helpers so the viewer is pixel-identical
+  const css = document.querySelector('style').innerHTML;
+  const helpers = [asSentences, isTitleLine, defaultHeroIdx, heroIndexFor, renderRole, esc].map(f=>f.toString()).join('\n');
+
+  const viewer = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${eyebrow||'ClientReady Artifact'}</title>
+<style>${css}
+body{display:block}
+.panel-ctrl{display:none}
+.stage-wrap:before{left:0}
+.stage{max-width:1100px}
+.card{max-height:760px}
+.present-toggle{display:none}
+</style></head><body>
+<main class="stage-wrap"><div class="stage"><section class="card" id="card">
+<header class="header"><span class="eye" id="eye"></span><span id="idx"></span></header>
+<article class="content" id="content"></article>
+<footer class="footer"><span id="series"></span><span id="roman"></span></footer>
+</section></div>
+<nav class="dock"><div class="group">
+<button class="nav" id="prev" onclick="go(-1)">&larr;</button>
+<div class="group" id="dots"></div>
+<button class="nav" id="next" onclick="go(1)">&rarr;</button>
+</div>
+<div class="sep"></div>
+<div class="group"><span class="dlabel">Canvas</span>
+<button id="obsidian" class="active" onclick="vtheme('obsidian')">Obsidian</button>
+<button id="chalk" onclick="vtheme('chalk')">Chalk</button>
+</div></nav></main>
+<script>
+const DATA=${JSON.stringify(payload)};
+const PAGES=DATA.pages; let active=0;
+const ROMAN=["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII","XIII","XIV","XV"];
+if(DATA.theme==='chalk') document.documentElement.setAttribute('data-theme','chalk');
+${helpers}
+function render(t){
+  if(!PAGES.length)return; const p=PAGES[active], card=document.getElementById('card');
+  const draw=()=>{
+    document.getElementById('eye').textContent=DATA.eyebrow||p.label;
+    document.getElementById('series').textContent=p.label;
+    document.getElementById('idx').textContent=String(active+1).padStart(2,'0')+' / '+String(PAGES.length).padStart(2,'0');
+    document.getElementById('roman').textContent=ROMAN[active]||(active+1);
+    document.getElementById('content').innerHTML=renderRole(p);
+    if(t)card.style.opacity=1;
+  };
+  if(t){card.style.opacity=0;setTimeout(draw,180);}else draw();
+  document.getElementById('prev').disabled=active===0;
+  document.getElementById('next').disabled=active===PAGES.length-1;
+  const dots=document.getElementById('dots');dots.innerHTML='';
+  if(PAGES.length<=14){PAGES.forEach((_,i)=>{const b=document.createElement('button');b.className='dot-nav'+(i===active?' active':'');b.onclick=()=>{active=i;render(true);};dots.appendChild(b);});}
+  else{const s=document.createElement('span');s.style.cssText='font-size:12px;font-weight:700;letter-spacing:1px;color:var(--ink);min-width:74px;text-align:center';s.textContent=(active+1)+' / '+PAGES.length;dots.appendChild(s);}
+}
+function go(d){const n=active+d;if(n>=0&&n<PAGES.length){active=n;render(true);}}
+function vtheme(t){document.documentElement.removeAttribute('data-theme');
+  if(t==='chalk'){document.documentElement.setAttribute('data-theme','chalk');document.getElementById('chalk').classList.add('active');document.getElementById('obsidian').classList.remove('active');}
+  else{document.getElementById('obsidian').classList.add('active');document.getElementById('chalk').classList.remove('active');}}
+if(DATA.theme==='chalk'){document.getElementById('chalk').classList.add('active');document.getElementById('obsidian').classList.remove('active');}
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')go(1);if(e.key==='ArrowLeft')go(-1);});
+render(false);
+<\/script></body></html>`;
+
+  const blob=new Blob([viewer],{type:'text/html'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='index.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// boot
+compile();
+// export libraries may finish loading after boot — re-check the gate so the
+// "libraries loading" blocker clears on its own once they're ready
+window.addEventListener('load', refreshExportState);
+let _libPoll=setInterval(()=>{ if(typeof html2canvas!=='undefined' && typeof window.jspdf!=='undefined'){ refreshExportState(); clearInterval(_libPoll);} }, 400);
+setTimeout(()=>clearInterval(_libPoll), 8000);
+</script>
+</body>
+</html>
